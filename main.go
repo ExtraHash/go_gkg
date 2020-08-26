@@ -11,6 +11,14 @@ import (
 	"os"
 )
 
+var homedir string = getHomeDir()
+
+func getHomeDir() string {
+	homedir, err := os.UserHomeDir()
+	check(err)
+	return homedir
+}
+
 // GHKey is one ssh key info returned from the github API.
 type GHKey struct {
 	ID  int    `json:"id"`
@@ -18,8 +26,11 @@ type GHKey struct {
 }
 
 func writeKeys(keyList []string) {
-	fileName := "authorized_keys"
-	file, err := os.Create(fileName)
+	filename := homedir + "/.ssh/authorized_keys"
+
+	fmt.Println("Writing merged key list to " + filename)
+
+	file, err := os.Create(filename)
 	check(err)
 
 	defer file.Close()
@@ -27,6 +38,8 @@ func writeKeys(keyList []string) {
 	for _, key := range keyList {
 		file.WriteString(key + "\n")
 	}
+
+	fmt.Println("Written successfully. Enjoy your day!")
 }
 
 func fetchKeys(username string) []string {
@@ -52,8 +65,13 @@ func fetchKeys(username string) []string {
 }
 
 func readAuthKeyFile() []string {
-	homedir, err := os.UserHomeDir()
-	check(err)
+	fmt.Println("Checking local keyfile.")
+	filename := homedir + "/.ssh/authorized_keys"
+
+	if !fileExists(filename) {
+		fmt.Println("Authorized key file does not exist at " + filename + ", will be created.")
+		return []string{}
+	}
 
 	file, err := os.Open(homedir + "/.ssh/authorized_keys")
 	check(err)
@@ -71,6 +89,7 @@ func readAuthKeyFile() []string {
 		log.Fatal(err)
 	}
 
+	fmt.Println("Local keys retrieved.")
 	return keyList
 }
 
@@ -96,14 +115,23 @@ func parseArgs() string {
 func main() {
 	username := parseArgs()
 
+	if username == "" {
+		log.Fatal("GitHub username is required, e.g., ./gkg -username=MyUserName")
+	}
+
 	ghKeyList := fetchKeys(username)
-	fmt.Println(ghKeyList)
 	localKeyList := readAuthKeyFile()
-	fmt.Println(localKeyList)
 	mergedKeyList := deDupe(append(ghKeyList, localKeyList...))
-	fmt.Println(localKeyList)
 
 	writeKeys(mergedKeyList)
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
 }
 
 func check(e error) {
